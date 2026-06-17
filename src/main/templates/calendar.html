@@ -1,0 +1,259 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 style="margin-bottom:15px">📅 Calendar View</h2>
+
+<div style="display:flex;gap:10px;margin-bottom:18px">
+  <button onclick="switchView('month')" id="btn-month"
+          class="btn btn-primary">Monthly</button>
+  <button onclick="switchView('week')" id="btn-week"
+          class="btn btn-warning">Weekly</button>
+  <button onclick="switchView('day')" id="btn-day"
+          class="btn btn-success">Daily</button>
+</div>
+
+<div id="calendar-container"
+     style="background:white;border-radius:8px;
+            padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+</div>
+
+<div id="reminder-popup"
+     style="display:none;position:fixed;top:20px;right:20px;
+            background:#cc3333;color:white;padding:16px 22px;
+            border-radius:8px;font-size:15px;z-index:9999;
+            box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:300px">
+  <strong>⏰ Reminder</strong>
+  <div id="reminder-text" style="margin-top:6px"></div>
+  <button onclick="document.getElementById('reminder-popup').style.display='none'"
+          style="margin-top:10px;background:white;color:#cc3333;
+                 border:none;padding:4px 12px;border-radius:4px;
+                 cursor:pointer;font-weight:bold">Dismiss</button>
+</div>
+
+<script>
+const tasks = {{ tasks | tojson }};
+let currentView  = 'month';
+let currentYear  = new Date().getFullYear();
+let currentMonth = new Date().getMonth();
+let currentDay   = new Date().getDate();
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const PRIORITY_COLORS = {High:'#cc3333',Medium:'#b37400',Low:'#2d6a2d'};
+
+function allowDrop(e){ e.preventDefault(); }
+
+function dragStart(e, taskId){
+  e.dataTransfer.setData('taskId', taskId);
+}
+
+function dropOnDay(e, dateStr){
+  e.preventDefault();
+  const taskId = e.dataTransfer.getData('taskId');
+  if(!taskId) return;
+  fetch('/reschedule/' + taskId, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({due_date: dateStr})
+  }).then(r => r.json()).then(d => {
+    if(d.status === 'ok'){
+      const t = tasks.find(x => x.id == taskId);
+      if(t) t.due_date = dateStr;
+      buildCalendar();
+    }
+  });
+}
+
+function checkReminders(){
+  const now = new Date();
+  tasks.forEach(t => {
+    if(!t.due_date || !t.due_time || t.completed) return;
+    const due = new Date(t.due_date + 'T' + t.due_time);
+    const diffMin = (due - now) / 60000;
+    if(diffMin > 0 && diffMin <= 15){
+      const pop = document.getElementById('reminder-popup');
+      const txt = document.getElementById('reminder-text');
+      txt.innerHTML = '\u201c' + t.title + '\u201d is due at ' + t.due_time + '!';
+      pop.style.display = 'block';
+      setTimeout(() => { pop.style.display='none'; }, 8000);
+    }
+  });
+}
+setInterval(checkReminders, 30000);
+checkReminders();
+
+function taskPill(t){
+  const color = PRIORITY_COLORS[t.priority] || '#2a6099';
+  const done  = t.completed ? 'text-decoration:line-through;opacity:0.6;' : '';
+  return '<div draggable="true" ondragstart="dragStart(event,' + t.id + ')" '
+       + 'title="' + t.title + '" '
+       + 'style="background:' + color + ';color:white;border-radius:3px;'
+       + 'padding:2px 5px;font-size:12px;margin-bottom:2px;cursor:grab;' + done + '">'
+       + t.title + '</div>';
+}
+
+function navHeader(label){
+  return '<div style="display:flex;justify-content:space-between;'
+       + 'align-items:center;margin-bottom:14px">'
+       + '<button onclick="shiftPeriod(-1)" class="btn btn-primary">&#9664; Prev</button>'
+       + '<h3 style="margin:0">' + label + '</h3>'
+       + '<button onclick="shiftPeriod(1)" class="btn btn-primary">Next &#9654;</button>'
+       + '</div>';
+}
+
+function dayCell(dateStr, dayNum, dayTasks, isToday, extraStyle){
+  const bg = isToday ? '#e8f0fe' : 'white';
+  const pills = dayTasks.map(taskPill).join('');
+  return '<td ondragover="allowDrop(event)" '
+       + 'ondrop="dropOnDay(event,\'' + dateStr + '\')" '
+       + 'style="padding:6px;vertical-align:top;border:1px solid #eee;'
+       + 'min-height:70px;background:' + bg + ';' + extraStyle + '">'
+       + '<div style="font-weight:bold;font-size:13px;margin-bottom:3px">' + dayNum + '</div>'
+       + pills + '</td>';
+}
+
+function buildMonth(){
+  const firstDay    = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth+1, 0).getDate();
+  const todayStr    = new Date().toISOString().slice(0,10);
+
+  let html = navHeader(MONTH_NAMES[currentMonth] + ' ' + currentYear);
+  html += '<table style="width:100%;border-collapse:collapse"><tr>';
+  DAY_NAMES.forEach(d => {
+    html += '<th style="padding:8px;text-align:center;background:#2a6099;'
+          + 'color:white;font-size:13px">' + d + '</th>';
+  });
+  html += '</tr><tr>';
+
+  for(let i=0; i<firstDay; i++) html += '<td style="padding:6px"></td>';
+
+  for(let day=1; day<=daysInMonth; day++){
+    const ds = currentYear + '-'
+      + String(currentMonth+1).padStart(2,'0') + '-'
+      + String(day).padStart(2,'0');
+    const dayTasks = tasks.filter(t => t.due_date === ds);
+    const isToday  = ds === todayStr;
+    html += dayCell(ds, day, dayTasks, isToday, '');
+    if((firstDay + day) % 7 === 0) html += '</tr><tr>';
+  }
+  html += '</tr></table>';
+  document.getElementById('calendar-container').innerHTML = html;
+}
+
+function buildWeek(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  const start = new Date(currentYear, currentMonth, currentDay);
+  start.setDate(start.getDate() - start.getDay());
+
+  const dates = [];
+  for(let i=0; i<7; i++){
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    dates.push(d);
+  }
+
+  const label = dates[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})
+              + ' - '
+              + dates[6].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+  let html = navHeader('Week of ' + label);
+  html += '<table style="width:100%;border-collapse:collapse"><tr>';
+
+  dates.forEach(d => {
+    const dayLabel = DAY_NAMES[d.getDay()] + ' ' + d.getDate();
+    html += '<th style="padding:8px;text-align:center;background:#2a6099;'
+          + 'color:white;font-size:14px;width:14%">' + dayLabel + '</th>';
+  });
+  html += '</tr><tr>';
+
+  dates.forEach(d => {
+    const ds = d.getFullYear() + '-'
+      + String(d.getMonth()+1).padStart(2,'0') + '-'
+      + String(d.getDate()).padStart(2,'0');
+    const dayTasks = tasks.filter(t => t.due_date === ds);
+    const isToday  = ds === todayStr;
+    html += dayCell(ds, d.getDate(), dayTasks, isToday, 'min-height:120px;');
+  });
+  html += '</tr></table>';
+  document.getElementById('calendar-container').innerHTML = html;
+}
+
+function buildDay(){
+  const d = new Date(currentYear, currentMonth, currentDay);
+  const ds = currentYear + '-'
+    + String(currentMonth+1).padStart(2,'0') + '-'
+    + String(currentDay).padStart(2,'0');
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  const label = d.toLocaleDateString('en-US',
+    {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  const dayTasks = tasks.filter(t => t.due_date === ds);
+
+  let html = navHeader(label);
+
+  if(dayTasks.length === 0){
+    html += '<p style="color:#888;padding:20px;text-align:center">'
+          + 'No tasks scheduled for this day.</p>';
+  } else {
+    dayTasks.forEach(t => {
+      const color = PRIORITY_COLORS[t.priority] || '#2a6099';
+      const done  = t.completed ? 'text-decoration:line-through;opacity:0.6' : '';
+      html += '<div draggable="true" ondragstart="dragStart(event,' + t.id + ')" '
+            + 'style="background:white;border-left:5px solid ' + color + ';'
+            + 'border-radius:6px;padding:12px 16px;margin-bottom:12px;'
+            + 'box-shadow:0 1px 4px rgba(0,0,0,0.08)">'
+            + '<div style="font-size:16px;font-weight:bold;' + done + '">' + t.title + '</div>'
+            + (t.description ? '<div style="color:#666;margin-top:4px;font-size:14px">'
+                             + t.description + '</div>' : '')
+            + '<div style="margin-top:8px;font-size:13px;color:#888">'
+            + '&#128336; ' + (t.due_time || 'No time set')
+            + ' &nbsp;|&nbsp; ' + t.priority + ' priority'
+            + ' &nbsp;|&nbsp; ' + t.category
+            + (t.completed ? ' &nbsp;|&nbsp; &#10004; Done' : '')
+            + '</div></div>';
+    });
+  }
+
+  document.getElementById('calendar-container').innerHTML = html;
+}
+
+function switchView(v){
+  currentView = v;
+  ['month','week','day'].forEach(x => {
+    document.getElementById('btn-'+x).className =
+      x === v ? 'btn btn-primary' : 'btn btn-warning';
+  });
+  buildCalendar();
+}
+
+function shiftPeriod(dir){
+  if(currentView === 'month'){
+    currentMonth += dir;
+    if(currentMonth < 0){ currentMonth=11; currentYear--; }
+    if(currentMonth > 11){ currentMonth=0; currentYear++; }
+  } else if(currentView === 'week'){
+    currentDay += dir * 7;
+    const d = new Date(currentYear, currentMonth, currentDay);
+    currentYear=d.getFullYear();
+    currentMonth=d.getMonth();
+    currentDay=d.getDate();
+  } else {
+    currentDay += dir;
+    const d = new Date(currentYear, currentMonth, currentDay);
+    currentYear=d.getFullYear();
+    currentMonth=d.getMonth();
+    currentDay=d.getDate();
+  }
+  buildCalendar();
+}
+
+function buildCalendar(){
+  if(currentView==='month') buildMonth();
+  else if(currentView==='week') buildWeek();
+  else buildDay();
+}
+
+buildCalendar();
+</script>
+{% endblock %}

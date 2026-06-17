@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div style="display:flex;gap:10px;margin-bottom:20px">
+  <form action="/search" method="get"
+        style="display:flex;gap:10px;width:100%">
+    <input type="text" name="q"
+           placeholder="Search tasks..."
+           value="{{ search_query or '' }}"
+           style="flex:1;padding:9px 12px;border:1px solid #ccc;
+                  border-radius:5px;font-size:13px">
+    <button type="submit" class="btn btn-primary">Search</button>
+    <a href="/" class="btn btn-warning">Clear</a>
+  </form>
+</div>
+
+<form action="/filter" method="get"
+      style="display:flex;gap:10px;flex-wrap:wrap;
+             margin-bottom:22px;align-items:flex-end">
+
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <label style="font-size:12px;font-weight:bold;color:#555">Category</label>
+    <select name="category"
+            style="padding:8px;border:1px solid #ccc;
+                   border-radius:5px;font-size:13px">
+      <option value="">All Categories</option>
+      {% for cat in ['Work','Personal','Study','General'] %}
+      <option value="{{ cat }}"
+        {% if filter_category is defined and filter_category==cat %}selected{% endif %}>
+        {{ cat }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <label style="font-size:12px;font-weight:bold;color:#555">Priority</label>
+    <select name="priority"
+            style="padding:8px;border:1px solid #ccc;
+                   border-radius:5px;font-size:13px">
+      <option value="">All Priorities</option>
+      {% for p in ['High','Medium','Low'] %}
+      <option value="{{ p }}"
+        {% if filter_priority is defined and filter_priority==p %}selected{% endif %}>
+        {{ p }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <label style="font-size:12px;font-weight:bold;color:#555">Status</label>
+    <select name="completed"
+            style="padding:8px;border:1px solid #ccc;
+                   border-radius:5px;font-size:13px">
+      <option value="">All Status</option>
+      <option value="0"
+        {% if filter_completed is defined and filter_completed=='0' %}selected{% endif %}>
+        Incomplete</option>
+      <option value="1"
+        {% if filter_completed is defined and filter_completed=='1' %}selected{% endif %}>
+        Completed</option>
+    </select>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <label style="font-size:12px;font-weight:bold;color:#555">From Date</label>
+    <input type="date" name="date_from"
+           value="{{ filter_date_from if filter_date_from is defined else '' }}"
+           style="padding:8px;border:1px solid #ccc;
+                  border-radius:5px;font-size:13px">
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <label style="font-size:12px;font-weight:bold;color:#555">To Date</label>
+    <input type="date" name="date_to"
+           value="{{ filter_date_to if filter_date_to is defined else '' }}"
+           style="padding:8px;border:1px solid #ccc;
+                  border-radius:5px;font-size:13px">
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:flex-end">
+    <button type="submit" class="btn btn-warning">Filter</button>
+    <a href="/" class="btn btn-success">Reset</a>
+  </div>
+</form>
+
+{% if tasks %}
+  {% for task in tasks %}
+  <div class="card {{ task.priority | lower }}
+              {% if task.completed %} done{% endif %}">
+    <div style="display:flex;justify-content:space-between;
+                align-items:flex-start">
+      <div style="flex:1">
+        <h3>{{ task.title }}
+          {% if task.completed %}
+            <span style="color:#2d6a2d;font-size:12px"> ✔ Done</span>
+          {% endif %}
+        </h3>
+        {% if task.description %}
+        <p>{{ task.description }}</p>
+        {% endif %}
+        <div style="margin-top:8px">
+          <span class="badge badge-{{ task.priority | lower }}">
+            {{ task.priority }}</span>
+          <span class="badge badge-cat">{{ task.category }}</span>
+          {% if task.due_date %}
+          <span style="font-size:12px;color:#888">
+            📅 {{ task.due_date }}
+            {% if task.due_time %} {{ task.due_time }}{% endif %}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;margin-left:15px">
+        <form action="/complete/{{ task.id }}" method="post">
+          <button type="submit" class="btn btn-success">
+            {% if task.completed %}Undo{% else %}Done{% endif %}
+          </button>
+        </form>
+        <a href="/edit/{{ task.id }}" class="btn btn-warning">Edit</a>
+        <form action="/delete/{{ task.id }}" method="post"
+              onsubmit="return confirm('Delete this task?')">
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card" style="text-align:center;color:#888;padding:40px">
+    <p style="font-size:16px">No tasks found.</p>
+    <a href="/add" class="btn btn-primary"
+       style="margin-top:15px">Add your first task</a>
+  </div>
+{% endif %}
+
+<div id="reminder-popup"
+     style="display:none;position:fixed;top:20px;right:20px;
+            background:#cc3333;color:white;padding:16px 22px;
+            border-radius:8px;font-size:15px;z-index:9999;
+            box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:300px">
+  <strong>⏰ Reminder</strong>
+  <div id="reminder-text" style="margin-top:6px"></div>
+  <button onclick="document.getElementById('reminder-popup').style.display='none'"
+          style="margin-top:10px;background:white;color:#cc3333;
+                 border:none;padding:4px 12px;border-radius:4px;
+                 cursor:pointer;font-weight:bold">Dismiss</button>
+</div>
+
+<script>
+const tasks = {{ tasks | tojson }};
+function checkReminders(){
+  const now = new Date();
+  tasks.forEach(t => {
+    if(!t.due_date || !t.due_time || t.completed) return;
+    const due = new Date(t.due_date + 'T' + t.due_time);
+    const diffMin = (due - now) / 60000;
+    if(diffMin > 0 && diffMin <= 15){
+      const pop = document.getElementById('reminder-popup');
+      const txt = document.getElementById('reminder-text');
+      txt.innerHTML = '\u201c' + t.title
+                    + '\u201d is due at ' + t.due_time + '!';
+      pop.style.display = 'block';
+      setTimeout(() => { pop.style.display='none'; }, 8000);
+    }
+  });
+}
+setInterval(checkReminders, 30000);
+checkReminders();
+</script>
+{% endblock %}
