@@ -198,6 +198,8 @@ def test_reschedule_preserves_other_fields(test_db):
     assert updated['priority'] == 'High'
     assert updated['due_time'] == '10:00'
     assert updated['due_date'] == '2026-07-04'
-    def test_reschedule_nonexistent_task(test_db):
-        result = models.reschedule_task(9999, '2026-08-01')
-        assert result == False
+
+
+def test_reschedule_nonexistent_task(test_db):
+    result = models.reschedule_task(9999, '2026-08-01')
+    assert result == False
